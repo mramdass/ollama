@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ollama Chat</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap.min.css') }}">
+    <style>
+        :root{
+            --bg: #ffffff;
+            --text: #212529;
+            --card-bg: #f8f9fa;
+            --chat-bg: #ffffff;
+            --chat-text: #212529;
+        }
+        .dark-mode{
+            --bg: #0d1117;
+            --text: #e6edf3;
+            --card-bg: #0f1720;
+            --chat-bg: #071018;
+            --chat-text: #e6edf3;
+        }
+        body{background:var(--bg); color:var(--text);} 
+        .card {background:var(--card-bg);}
+        .chat-window{background:var(--chat-bg); color:var(--chat-text); padding:1rem; border-radius:6px; max-height:60vh; overflow:auto}
+        .theme-toggle{position:relative; top:-6px; margin-left:8px}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="d-flex align-items-center my-4">
+            <h1 class="m-0">Ollama Chat</h1>
+            <button id="themeToggle" class="btn btn-sm btn-outline-secondary theme-toggle">Dark</button>
+        </div>
+
+        <div class="card mx-3">
+            <div class="card-body">
+                <div class="chat-window" id="chatWindow">
+                    <p class="text-muted">Type your message and press Enter!</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mx-3">
+            <div class="card-body">
+                <textarea id="messageInput" class="form-control" rows="4" placeholder="Enter your message"></textarea>
+                <button id="sendButton" type="button" class="btn btn-primary mt-3" disabled>Send</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/jquery-3.6.0.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/marked.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/purify.min.js') }}"></script>
+    <script>
+        $(document).ready(function() {
+            // Theme init: apply saved theme or default
+            function applyTheme(theme){
+                if(theme === 'dark'){
+                    $('body').addClass('dark-mode');
+                    $('#themeToggle').text('Light');
+                } else {
+                    $('body').removeClass('dark-mode');
+                    $('#themeToggle').text('Dark');
+                }
+            }
+            var saved = localStorage.getItem('theme') || 'light';
+            applyTheme(saved);
+            $('#themeToggle').click(function(){
+                var cur = $('body').hasClass('dark-mode') ? 'dark' : 'light';
+                var next = cur === 'dark' ? 'light' : 'dark';
+                applyTheme(next);
+                localStorage.setItem('theme', next);
+            });
+            $("#sendButton").prop("disabled", true); // Disable by default
+            $("#messageInput").on("input", function() {
+                if ($(this).val() !== "") {
+                    $("#sendButton").prop("disabled", false);
+                } else {
+                    $("#sendButton").prop("disabled", true);
+                }
+            });
+
+            $("#sendButton").click(function() {
+                var message = $("#messageInput").val();
+                var userPara = $("<p>").append($("<strong>").text("You:" + " ")).append(document.createTextNode(message));
+                $("#chatWindow").append(userPara);
+                $("#messageInput").val(""); // Clear the input
+                $("#sendButton").prop("disabled", true); // Re-disable
+
+                $.ajax({
+                    url: "/get_response", // Route to Flask app
+                    method: "POST",
+                    contentType: "application/json",
+                    data: JSON.stringify({ prompt: message }),
+                    success: function(response) {
+                        var raw = response.response || "";
+                        var rendered = marked.parse(raw);
+                        var safe = DOMPurify.sanitize(rendered);
+                        var wrapper = $('<div>').append($('<strong>').text('Ollama:'), ' ');
+                        wrapper.append($(safe));
+                        $('#chatWindow').append($('<p>').append(wrapper));
+                        // Scroll to bottom
+                        $("#chatWindow").scrollTop($("#chatWindow")[0].scrollHeight);
+                    },
+                    error: function(error) {
+                        console.error("Error:", error);
+                    }
+                });
+            });
+        });
+    </script>
+</body>
+</html>
