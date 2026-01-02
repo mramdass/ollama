@@ -21,9 +21,13 @@ Install Ollama
 ```
 curl -fsSL https://ollama.com/install.sh | sh
 ```
-Run Ollama to obtain a model
+Run Ollama to obtain a Model
 ```
 ollama run gemma3
+```
+Exit Interactive Chat
+```
+/bye
 ```
 Export WSL
 ```
