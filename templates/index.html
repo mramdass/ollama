@@ -43,8 +43,7 @@
 
         <div class="card mx-3">
             <div class="card-body">
-                <textarea id="messageInput" class="form-control" rows="4" placeholder="Enter your message"></textarea>
-                <button id="sendButton" type="button" class="btn btn-primary mt-3" disabled>Send</button>
+                <textarea id="messageInput" class="form-control" rows="4" placeholder="Enter your message (Press Enter to send, Shift+Enter for newline)"></textarea>
             </div>
         </div>
     </div>
@@ -72,42 +71,89 @@
                 applyTheme(next);
                 localStorage.setItem('theme', next);
             });
-            $("#sendButton").prop("disabled", true); // Disable by default
-            $("#messageInput").on("input", function() {
-                if ($(this).val() !== "") {
-                    $("#sendButton").prop("disabled", false);
-                } else {
-                    $("#sendButton").prop("disabled", true);
-                }
-            });
-
-            $("#sendButton").click(function() {
+            // Enter-to-send: Shift+Enter inserts newline, Enter sends
+            function sendMessage() {
                 var message = $("#messageInput").val();
-                var userPara = $("<p>").append($("<strong>").text("You:" + " ")).append(document.createTextNode(message));
-                $("#chatWindow").append(userPara);
+                if (!message || !message.trim()) return;
+                // Append locally and trim to last 50 (client-side storage)
+                messages.push({role: 'user', text: message});
+                if (messages.length > 50) messages = messages.slice(-50);
+                saveMessages();
+                renderMessages();
+
                 $("#messageInput").val(""); // Clear the input
-                $("#sendButton").prop("disabled", true); // Re-disable
+
+                // Send the last 15 messages as context to the server
+                var sendMessages = messages.slice(-15);
 
                 $.ajax({
-                    url: "/get_response", // Route to Flask app
+                    url: "/get_response",
                     method: "POST",
                     contentType: "application/json",
-                    data: JSON.stringify({ prompt: message }),
+                    data: JSON.stringify({ prompt: message, session_id: sessionId, messages: sendMessages }),
                     success: function(response) {
-                        var raw = response.response || "";
-                        var rendered = marked.parse(raw);
-                        var safe = DOMPurify.sanitize(rendered);
-                        var wrapper = $('<div>').append($('<strong>').text('Ollama:'), ' ');
-                        wrapper.append($(safe));
-                        $('#chatWindow').append($('<p>').append(wrapper));
-                        // Scroll to bottom
-                        $("#chatWindow").scrollTop($("#chatWindow")[0].scrollHeight);
+                        var assistantText = response.response || '';
+                        // Append assistant reply locally and re-render
+                        messages.push({role: 'assistant', text: assistantText});
+                        if (messages.length > 50) messages = messages.slice(-50);
+                        saveMessages();
+                        renderMessages();
                     },
                     error: function(error) {
                         console.error("Error:", error);
                     }
                 });
+            }
+
+            // Send on Enter (without Shift). Allow Shift+Enter for newlines.
+            $("#messageInput").on('keydown', function(e) {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendMessage();
+                }
             });
+
+            // Message array stored in localStorage to avoid server-side memory usage
+            var sessionId = localStorage.getItem('session_id');
+            if (!sessionId) {
+                if (window.crypto && crypto.randomUUID) {
+                    sessionId = crypto.randomUUID();
+                } else {
+                    sessionId = 's-' + Date.now() + '-' + Math.floor(Math.random()*1000000);
+                }
+                localStorage.setItem('session_id', sessionId);
+            }
+
+            var messages = JSON.parse(localStorage.getItem('messages') || '[]');
+
+            function saveMessages() {
+                localStorage.setItem('messages', JSON.stringify(messages));
+            }
+
+            function renderMessages() {
+                $('#chatWindow').empty();
+                if (messages.length === 0) {
+                    $('#chatWindow').append($('<p>').addClass('text-muted').text('Type your message and press Enter!'));
+                    return;
+                }
+                messages.forEach(function(m){
+                    var label = m.role === 'user' ? 'You:' : 'Ollama:';
+                    if (m.role === 'assistant') {
+                        var rendered = marked.parse(m.text || '');
+                        var safe = DOMPurify.sanitize(rendered);
+                        var wrapper = $('<div>').append($('<strong>').text(label + ' '));
+                        wrapper.append($(safe));
+                        $('#chatWindow').append($('<p>').append(wrapper));
+                    } else {
+                        $('#chatWindow').append($('<p>').append($('<strong>').text(label + ' ')).append(document.createTextNode(m.text)));
+                    }
+                });
+                $('#chatWindow').scrollTop($('#chatWindow')[0].scrollHeight);
+            }
+
+            renderMessages();
+
+            // Note: click handler removed; sendMessage() handles sending on Enter.
         });
     </script>
 </body>
