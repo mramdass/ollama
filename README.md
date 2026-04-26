@@ -3,7 +3,7 @@ A Flask app using local Ollama API.
 
 # Requirements
 ```
-pip install flask olama
+pip install flask ollama
 ```
 
 # Local Network Use Case
